@@ -1,0 +1,73 @@
+# Compiled Java files
+*.class
+
+# Log files
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package files
+*.jar
+*.war
+*.ear
+
+# JVM crash logs
+hs_err_pid*
+replay_pid*
+
+# Build directories
+bin/
+build/
+out/
+target/
+
+# Maven
+.mvn/
+dependency-reduced-pom.xml
+
+# Gradle
+.gradle/
+build/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# NetBeans
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# VS Code
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test reports
+test-output/
+
+# Generated documentation
+docs/
+
+# Local configuration
+local.properties
