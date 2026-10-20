@@ -67,9 +67,9 @@ public class Main extends JFrame
                 Class.forName("com.mysql.cj.jdbc.Driver");
 
                 try (Connection con = DriverManager.getConnection(
-                        "jdbc:mysql://localhost:3306/retail_db",
+                        "jdbc:mysql://localhost:3306/retail_billing",
                         "root",
-                        "5821");
+                        "54321");
 
                      PreparedStatement ps = con.prepareStatement(sql)) {
 
