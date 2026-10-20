@@ -1,9 +1,86 @@
-CREATE DATABASE if not exists retail_billing;
-USE retail_billing;
+CREATE DATABASE IF NOT EXISTS retail_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE retail_db;
 
-CREATE TABLE if not exists users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE,
-    password VARCHAR(100),
-    role VARCHAR(20)
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  full_name VARCHAR(120) NOT NULL,
+  username VARCHAR(60) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('ADMIN','CASHIER') NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS categories (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS suppliers (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(140) NOT NULL,
+  phone VARCHAR(40), email VARCHAR(140), address VARCHAR(500), active BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS products (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  sku VARCHAR(60) NOT NULL UNIQUE,
+  barcode VARCHAR(100) UNIQUE,
+  name VARCHAR(180) NOT NULL,
+  category_id BIGINT NULL,
+  supplier_id BIGINT NULL,
+  unit VARCHAR(30) NOT NULL DEFAULT 'pcs',
+  purchase_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+  selling_price DECIMAL(12,2) NOT NULL,
+  tax_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  stock_quantity DECIMAL(12,3) NOT NULL DEFAULT 0,
+  reorder_level DECIMAL(12,3) NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  CONSTRAINT fk_product_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,
+  INDEX idx_product_name (name), INDEX idx_product_barcode (barcode)
+);
+CREATE TABLE IF NOT EXISTS sales (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  invoice_no VARCHAR(40) NOT NULL UNIQUE,
+  cashier_id BIGINT NOT NULL,
+  subtotal DECIMAL(12,2) NOT NULL,
+  discount_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total DECIMAL(12,2) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_sale_cashier FOREIGN KEY (cashier_id) REFERENCES users(id),
+  INDEX idx_sales_date (created_at)
+);
+CREATE TABLE IF NOT EXISTS sale_items (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  sale_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  product_name VARCHAR(180) NOT NULL,
+  sku VARCHAR(60) NOT NULL,
+  quantity DECIMAL(12,3) NOT NULL,
+  unit_price DECIMAL(12,2) NOT NULL,
+  tax_percent DECIMAL(5,2) NOT NULL,
+  line_total DECIMAL(12,2) NOT NULL,
+  CONSTRAINT fk_item_sale FOREIGN KEY (sale_id) REFERENCES sales(id),
+  CONSTRAINT fk_item_product FOREIGN KEY (product_id) REFERENCES products(id),
+  INDEX idx_sale_items_product (product_id)
+);
+CREATE TABLE IF NOT EXISTS payments (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  sale_id BIGINT NOT NULL,
+  method ENUM('CASH','CARD','UPI','OTHER') NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  reference_no VARCHAR(100),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_payment_sale FOREIGN KEY (sale_id) REFERENCES sales(id)
+);
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  product_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  quantity_change DECIMAL(12,3) NOT NULL,
+  reason VARCHAR(300) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_movement_product FOREIGN KEY (product_id) REFERENCES products(id),
+  CONSTRAINT fk_movement_user FOREIGN KEY (user_id) REFERENCES users(id)
 );

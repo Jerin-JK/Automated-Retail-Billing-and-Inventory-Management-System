@@ -71,3 +71,4 @@ docs/
 
 # Local configuration
 local.properties
+config/db.properties
