@@ -28,7 +28,7 @@ public final class Database {
     public static Connection getConnection() throws SQLException {
         String url = value("RETAIL_DB_URL", "db.url", "jdbc:mysql://localhost:3306/retail_db?useSSL=false&serverTimezone=UTC");
         String user = value("RETAIL_DB_USER", "db.user", "root");
-        String password = value("RETAIL_DB_PASSWORD", "db.password", "");
+        String password = value("RETAIL_DB_PASSWORD", "db.password", "5821");
         return DriverManager.getConnection(url, user, password);
     }
 }
