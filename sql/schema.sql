@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS suppliers (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(140) NOT NULL,
-  phone VARCHAR(40), email VARCHAR(140), address VARCHAR(500), active BOOLEAN NOT NULL DEFAULT TRUE
+  phone VARCHAR(40),
+  email VARCHAR(140),
+  address VARCHAR(500),
+  active BOOLEAN NOT NULL DEFAULT TRUE
 );
 CREATE TABLE IF NOT EXISTS products (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -37,7 +40,8 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
   CONSTRAINT fk_product_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,
-  INDEX idx_product_name (name), INDEX idx_product_barcode (barcode)
+  INDEX idx_product_name (name),
+  INDEX idx_product_barcode (barcode)
 );
 CREATE TABLE IF NOT EXISTS sales (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

@@ -1,21 +1,186 @@
 package inventory.dao;
+
 import shared.config.Database;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
 import inventory.model.Product;
 
+/** Queries and updates product records and their stock history. */
 public class ProductDao {
-    private Product map(ResultSet r)throws SQLException{return new Product(r.getLong("id"),r.getString("sku"),r.getString("barcode"),r.getString("name"),r.getString("category"),r.getString("unit"),r.getBigDecimal("purchase_price"),r.getBigDecimal("selling_price"),r.getBigDecimal("tax_percent"),r.getBigDecimal("stock_quantity"),r.getBigDecimal("reorder_level"));}
-    private String select(){return "SELECT p.id,p.sku,p.barcode,p.name,COALESCE(c.name,'') category,p.unit,p.purchase_price,p.selling_price,p.tax_percent,p.stock_quantity,p.reorder_level FROM products p LEFT JOIN categories c ON c.id=p.category_id";}
-    public List<Product> search(String term)throws SQLException{List<Product> out=new ArrayList<>();String sql=select()+" WHERE p.active=TRUE AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?) ORDER BY p.name";try(Connection c=Database.getConnection();PreparedStatement p=c.prepareStatement(sql)){String q="%"+term+"%";p.setString(1,q);p.setString(2,q);p.setString(3,q);try(ResultSet r=p.executeQuery()){while(r.next())out.add(map(r));}}return out;}
-    public Product find(long id)throws SQLException{try(Connection c=Database.getConnection();PreparedStatement p=c.prepareStatement(select()+" WHERE p.id=? AND p.active=TRUE")){p.setLong(1,id);try(ResultSet r=p.executeQuery()){return r.next()?map(r):null;}}}
-    public void save(Product x,long userId)throws SQLException{try(Connection c=Database.getConnection()){c.setAutoCommit(false);try{boolean isNew=x.id==0;BigDecimal previous=BigDecimal.ZERO;if(!isNew){try(PreparedStatement p=c.prepareStatement("SELECT stock_quantity FROM products WHERE id=? FOR UPDATE")){p.setLong(1,x.id);try(ResultSet r=p.executeQuery()){if(!r.next())throw new SQLException("Product not found.");previous=r.getBigDecimal(1);}}}Long category=null;if(x.category!=null&&!x.category.isBlank()){try(PreparedStatement p=c.prepareStatement("INSERT INTO categories(name) VALUES(?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",Statement.RETURN_GENERATED_KEYS)){p.setString(1,x.category.trim());p.executeUpdate();try(ResultSet r=p.getGeneratedKeys()){if(r.next())category=r.getLong(1);}}}
-      String sql=x.id==0?"INSERT INTO products(sku,barcode,name,category_id,unit,purchase_price,selling_price,tax_percent,stock_quantity,reorder_level) VALUES(?,?,?,?,?,?,?,?,?,?)":"UPDATE products SET sku=?,barcode=?,name=?,category_id=?,unit=?,purchase_price=?,selling_price=?,tax_percent=?,stock_quantity=?,reorder_level=? WHERE id=?";
-      try(PreparedStatement p=c.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)){int i=1;p.setString(i++,x.sku);if(x.barcode==null||x.barcode.isBlank())p.setNull(i++,Types.VARCHAR);else p.setString(i++,x.barcode);p.setString(i++,x.name);if(category==null)p.setNull(i++,Types.BIGINT);else p.setLong(i++,category);p.setString(i++,x.unit);p.setBigDecimal(i++,x.purchasePrice);p.setBigDecimal(i++,x.sellingPrice);p.setBigDecimal(i++,x.taxPercent);p.setBigDecimal(i++,x.stock);p.setBigDecimal(i++,x.reorderLevel);if(x.id!=0)p.setLong(i,x.id);p.executeUpdate();if(x.id==0){try(ResultSet r=p.getGeneratedKeys()){if(r.next())x.id=r.getLong(1);}}}
-      BigDecimal delta=x.stock.subtract(previous);if(delta.signum()!=0)try(PreparedStatement p=c.prepareStatement("INSERT INTO stock_movements(product_id,user_id,quantity_change,reason) VALUES(?,?,?,?)")){p.setLong(1,x.id);p.setLong(2,userId);p.setBigDecimal(3,delta);p.setString(4,isNew?"Initial stock":"Product edit stock adjustment");p.executeUpdate();}c.commit();
-      }catch(SQLException e){c.rollback();throw e;}finally{c.setAutoCommit(true);}}}
-    public void delete(long id)throws SQLException{try(Connection c=Database.getConnection();PreparedStatement p=c.prepareStatement("DELETE FROM products WHERE id=?")){p.setLong(1,id);p.executeUpdate();}}
-    public void deactivate(long id)throws SQLException{try(Connection c=Database.getConnection();PreparedStatement p=c.prepareStatement("UPDATE products SET active=FALSE WHERE id=?")){p.setLong(1,id);p.executeUpdate();}}
-    public void adjust(long id,BigDecimal change,long userId,String reason)throws SQLException{try(Connection c=Database.getConnection()){c.setAutoCommit(false);try{try(PreparedStatement p=c.prepareStatement("UPDATE products SET stock_quantity=stock_quantity+? WHERE id=? AND stock_quantity+?>=0")){p.setBigDecimal(1,change);p.setLong(2,id);p.setBigDecimal(3,change);if(p.executeUpdate()!=1)throw new SQLException("Stock adjustment would make quantity negative.");}try(PreparedStatement p=c.prepareStatement("INSERT INTO stock_movements(product_id,user_id,quantity_change,reason) VALUES(?,?,?,?)")){p.setLong(1,id);p.setLong(2,userId);p.setBigDecimal(3,change);p.setString(4,reason);p.executeUpdate();}c.commit();}catch(SQLException e){c.rollback();throw e;}finally{c.setAutoCommit(true);}}}
+    /** Converts one joined database row into a Product model. */
+    private Product map(ResultSet r) throws SQLException {
+        return new Product(r.getLong("id"), r.getString("sku"), r.getString("barcode"), r.getString("name"),
+                r.getString("category"), r.getString("unit"), r.getBigDecimal("purchase_price"),
+                r.getBigDecimal("selling_price"), r.getBigDecimal("tax_percent"), r.getBigDecimal("stock_quantity"),
+                r.getBigDecimal("reorder_level"));
+    }
+
+    /** Returns the shared product query, including its category name. */
+    private String select() {
+        return "SELECT p.id,p.sku,p.barcode,p.name,COALESCE(c.name,'') category,p.unit,p.purchase_price,p.selling_price,p.tax_percent,p.stock_quantity,p.reorder_level FROM products p LEFT JOIN categories c ON c.id=p.category_id";
+    }
+
+    /** Finds active products by name, SKU, or barcode. */
+    public List<Product> search(String term) throws SQLException {
+        List<Product> out = new ArrayList<>();
+        String sql = select()
+                + " WHERE p.active=TRUE AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?) ORDER BY p.name";
+        try (Connection c = Database.getConnection(); PreparedStatement p = c.prepareStatement(sql)) {
+            String q = "%" + term + "%";
+            p.setString(1, q);
+            p.setString(2, q);
+            p.setString(3, q);
+            try (ResultSet r = p.executeQuery()) {
+                while (r.next())
+                    out.add(map(r));
+            }
+        }
+        return out;
+    }
+
+    /** Loads one active product by its database ID, or returns null if missing. */
+    public Product find(long id) throws SQLException {
+        try (Connection c = Database.getConnection();
+                PreparedStatement p = c.prepareStatement(select() + " WHERE p.id=? AND p.active=TRUE")) {
+            p.setLong(1, id);
+            try (ResultSet r = p.executeQuery()) {
+                return r.next() ? map(r) : null;
+            }
+        }
+    }
+
+    /** Inserts or updates a product and records any initial or changed stock. */
+    public void save(Product x, long userId) throws SQLException {
+        try (Connection c = Database.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                boolean isNew = x.id == 0;
+                BigDecimal previous = BigDecimal.ZERO;
+                if (!isNew) {
+                    try (PreparedStatement p = c
+                            .prepareStatement("SELECT stock_quantity FROM products WHERE id=? FOR UPDATE")) {
+                        p.setLong(1, x.id);
+                        try (ResultSet r = p.executeQuery()) {
+                            if (!r.next())
+                                throw new SQLException("Product not found.");
+                            previous = r.getBigDecimal(1);
+                        }
+                    }
+                }
+                // Resolve the category name to its database ID, creating it when necessary.
+                Long category = null;
+                if (x.category != null && !x.category.isBlank()) {
+                    try (PreparedStatement p = c.prepareStatement(
+                            "INSERT INTO categories(name) VALUES(?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+                            Statement.RETURN_GENERATED_KEYS)) {
+                        p.setString(1, x.category.trim());
+                        p.executeUpdate();
+                        try (ResultSet r = p.getGeneratedKeys()) {
+                            if (r.next())
+                                category = r.getLong(1);
+                        }
+                    }
+                }
+                // Choose insert for a new product and update for an existing product.
+                String sql = x.id == 0
+                        ? "INSERT INTO products(sku,barcode,name,category_id,unit,purchase_price,selling_price,tax_percent,stock_quantity,reorder_level) VALUES(?,?,?,?,?,?,?,?,?,?)"
+                        : "UPDATE products SET sku=?,barcode=?,name=?,category_id=?,unit=?,purchase_price=?,selling_price=?,tax_percent=?,stock_quantity=?,reorder_level=? WHERE id=?";
+                try (PreparedStatement p = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                    int i = 1;
+                    p.setString(i++, x.sku);
+                    if (x.barcode == null || x.barcode.isBlank())
+                        p.setNull(i++, Types.VARCHAR);
+                    else
+                        p.setString(i++, x.barcode);
+                    p.setString(i++, x.name);
+                    if (category == null)
+                        p.setNull(i++, Types.BIGINT);
+                    else
+                        p.setLong(i++, category);
+                    p.setString(i++, x.unit);
+                    p.setBigDecimal(i++, x.purchasePrice);
+                    p.setBigDecimal(i++, x.sellingPrice);
+                    p.setBigDecimal(i++, x.taxPercent);
+                    p.setBigDecimal(i++, x.stock);
+                    p.setBigDecimal(i++, x.reorderLevel);
+                    if (x.id != 0)
+                        p.setLong(i, x.id);
+                    p.executeUpdate();
+                    if (x.id == 0) {
+                        try (ResultSet r = p.getGeneratedKeys()) {
+                            if (r.next())
+                                x.id = r.getLong(1);
+                        }
+                    }
+                }
+                // Record only the difference between the new and previous stock values.
+                BigDecimal delta = x.stock.subtract(previous);
+                if (delta.signum() != 0)
+                    try (PreparedStatement p = c.prepareStatement(
+                            "INSERT INTO stock_movements(product_id,user_id,quantity_change,reason) VALUES(?,?,?,?)")) {
+                        p.setLong(1, x.id);
+                        p.setLong(2, userId);
+                        p.setBigDecimal(3, delta);
+                        p.setString(4, isNew ? "Initial stock" : "Product edit stock adjustment");
+                        p.executeUpdate();
+                    }
+                c.commit();
+            } catch (SQLException e) {
+                c.rollback();
+                throw e;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        }
+    }
+
+    /** Permanently deletes a product that has no dependent records. */
+    public void delete(long id) throws SQLException {
+        try (Connection c = Database.getConnection();
+                PreparedStatement p = c.prepareStatement("DELETE FROM products WHERE id=?")) {
+            p.setLong(1, id);
+            p.executeUpdate();
+        }
+    }
+
+    /** Hides a product from active use while preserving its history. */
+    public void deactivate(long id) throws SQLException {
+        try (Connection c = Database.getConnection();
+                PreparedStatement p = c.prepareStatement("UPDATE products SET active=FALSE WHERE id=?")) {
+            p.setLong(1, id);
+            p.executeUpdate();
+        }
+    }
+
+    /** Applies a validated stock change and stores its reason in the movement history. */
+    public void adjust(long id, BigDecimal change, long userId, String reason) throws SQLException {
+        try (Connection c = Database.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                try (PreparedStatement p = c.prepareStatement(
+                        "UPDATE products SET stock_quantity=stock_quantity+? WHERE id=? AND stock_quantity+?>=0")) {
+                    p.setBigDecimal(1, change);
+                    p.setLong(2, id);
+                    p.setBigDecimal(3, change);
+                    if (p.executeUpdate() != 1)
+                        throw new SQLException("Stock adjustment would make quantity negative.");
+                }
+                try (PreparedStatement p = c.prepareStatement(
+                        "INSERT INTO stock_movements(product_id,user_id,quantity_change,reason) VALUES(?,?,?,?)")) {
+                    p.setLong(1, id);
+                    p.setLong(2, userId);
+                    p.setBigDecimal(3, change);
+                    p.setString(4, reason);
+                    p.executeUpdate();
+                }
+                c.commit();
+            } catch (SQLException e) {
+                c.rollback();
+                throw e;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        }
+    }
 }
